@@ -23,26 +23,51 @@
 
 package org.jboss.rhdm.kieserver;
 
+import org.drools.core.command.assertion.AssertEquals;
 import org.jboss.shrinkwrap.api.ShrinkWrap;
 import org.jboss.shrinkwrap.api.spec.WebArchive;
+import org.junit.Assert;
+import org.kie.api.command.BatchExecutionCommand;
+import org.kie.api.command.Command;
+import org.kie.api.runtime.ExecutionResults;
+import org.kie.api.runtime.rule.QueryResults;
+import org.kie.api.runtime.rule.QueryResultsRow;
+import org.kie.internal.command.CommandFactory;
 import org.kie.server.api.marshalling.MarshallingFormat;
+import org.kie.server.api.model.KieContainerResource;
+import org.kie.server.api.model.KieContainerStatus;
+import org.kie.server.api.model.ServiceResponse;
 import org.kie.server.client.KieServicesClient;
 import org.kie.server.client.KieServicesConfiguration;
 import org.kie.server.client.KieServicesFactory;
+import org.kie.server.client.RuleServicesClient;
+import org.openshift.quickstarts.decisionserver.hellorules.Greeting;
 import org.openshift.quickstarts.decisionserver.hellorules.Person;
+
 
 import java.lang.invoke.MethodHandles;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 import java.util.logging.Logger;
 
 public class KieServerTestBase {
 
     private Logger log = Logger.getLogger(MethodHandles.lookup().getClass().getName());
 
+    /**
+     * Sort the kieContainers list in alphabetical order
+     * To sort the list just add the following in the desired method:
+     * Collections.sort(KieContainersList, ALPHABETICAL_ORDER);
+     */
+    public static final Comparator<KieContainerResource> ALPHABETICAL_ORDER =
+            Comparator.comparing(KieContainerResource::getContainerId);
+
     protected void prepareClientInvocation() {
-        // do nothing in basic
+        // do nothing in basic, TODO https templates
     }
 
     protected static WebArchive getDeploymentInternal() throws Exception {
@@ -52,7 +77,6 @@ public class KieServerTestBase {
         //war.addClass(DecisionServerTestBase.class);
         war.addPackage(Person.class.getPackage());
         //war.addAsLibraries(Libraries.transitive("org.kie.server", "kie-server-client"));
-        //war.addAsLibraries(Libraries.transitive("org.arquillian.cube", "arquillian-cube-openshift-httpclient"));
 //        Files.PropertiesHandle handle = Files.createPropertiesHandle(FILENAME);
 //        handle.addProperty("kie.username", KIE_USERNAME);
 //        handle.addProperty("kie.password", KIE_PASSWORD);
@@ -64,27 +88,71 @@ public class KieServerTestBase {
     }
 
 
-    public void checkKieServerCapabilities(URL serverAddress, String cap) {
+    public void checkKieServerCapabilities(URL serverAddress, List<String> capabilities) throws MalformedURLException {
         log.info("Running test checkKieServerCapabilities");
         // for untrusted connections
         prepareClientInvocation();
-
-        KieServicesClient kieServicesClient = getKieServicesClient(serverAddress);
-
+        List<String> serverCapabilities = getKieServicesClient(serverAddress).getServerInfo().getResult().getCapabilities();
+        Collections.sort(serverCapabilities);
+        Collections.sort(capabilities);
+        Assert.assertEquals(capabilities, serverCapabilities);
     }
 
-    private KieServicesClient getKieServicesClient(URL serverAddress, Map<String, String> credentials) {
-        try {
-            KieServicesConfiguration kieServicesCnf = null;
-            kieServicesCnf = KieServicesFactory.newRestConfiguration(new URL(serverAddress,
-                    "/kie-server/services/rest/server").toString(), KIE_USERNAME, KIE_PASSWORD);
-            kieServicesCnf.setMarshallingFormat(MarshallingFormat.XSTREAM);
-            return KieServicesFactory.newKieServicesClient(kieServicesCnf);
-        } catch (MalformedURLException e) {
-            e.printStackTrace();
-            return null;
+    public void checkKieServerContainer(URL serverAddress, List<String> containersId) throws MalformedURLException {
+        log.info("Running test checkKieServerContainer");
+
+        List<KieContainerResource> containers = getKieServicesClient(serverAddress).listContainers().getResult().getContainers();
+        Collections.sort(containers, ALPHABETICAL_ORDER);
+        Collections.sort(containersId);
+
+        Assert.assertEquals(containersId.size(), containers.size());
+        for (int i = 0; i < containers.size(); i++) {
+            // The position for the arrays should be the same after sorted.
+            Assert.assertTrue(containersId.get(i).equals(containers.get(i).getContainerId()));
+            Assert.assertEquals(KieContainerStatus.STARTED, containers.get(i).getStatus());
         }
     }
 
+    public void fireAllRulesRest(URL serverAddress, List<String> containersId) throws MalformedURLException {
+        log.info("Running test fireAllRulesRest");
+        // for untrusted connections
+        prepareClientInvocation();
+        String personName = "Filippe Spolti";
+        RuleServicesClient client = getKieServicesClient(serverAddress).getServicesClient(RuleServicesClient.class);
+        List<Command<?>> commands = new ArrayList<>();
+        commands.add((Command<?>) CommandFactory.newInsert(new Person(personName)));
+        commands.add((Command<?>) CommandFactory.newFireAllRules());
+        commands.add((Command<?>) CommandFactory.newQuery("greetings", "get greeting"));
+        BatchExecutionCommand command = CommandFactory.newBatchExecution(commands, "HelloRulesSession");
 
+        containersId.stream().forEach(container -> {
+
+            ServiceResponse<ExecutionResults> response = client.executeCommandsWithResults(container,  command);
+
+            Assert.assertEquals(ServiceResponse.ResponseType.SUCCESS, response.getType());
+            Assert.assertEquals("Container " + container + " successfully called.", response.getMsg());
+
+            QueryResults queryResults = (QueryResults) response.getResult().getValue("greetings");
+            Greeting greeting = new Greeting();
+            for (QueryResultsRow queryResult : queryResults) {
+                greeting = (Greeting) queryResult.get("greeting");
+                System.out.println("Result: " + greeting.getSalutation());
+            }
+
+            Assert.assertEquals("Hello " + personName + "!", greeting.getSalutation());
+        });
+
+
+    }
+
+    private KieServicesClient getKieServicesClient(URL serverAddress) throws MalformedURLException {
+            KieServicesConfiguration kieServicesCnf = KieServicesFactory.newRestConfiguration(new URL(serverAddress,
+                    "services/rest/server").toString(), "kieserver", "Redhat@123");
+            kieServicesCnf.setMarshallingFormat(MarshallingFormat.XSTREAM);
+            return KieServicesFactory.newKieServicesClient(kieServicesCnf);
+    }
+
+//    private Object getServiceClient(Class clientType, KieServicesClient kieServicesClient) {
+//        return kieServicesClient.getServicesClient(clientType);
+//    }
 }

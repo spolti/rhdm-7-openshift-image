@@ -3,22 +3,18 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+    <!-- Parent -->
+    <parent>
+        <groupId>org.jboss</groupId>
+        <artifactId>jboss-parent</artifactId>
+        <version>20</version>
+    </parent>
+
     <!-- Artifact Configuration -->
     <groupId>org.jboss.rhdm</groupId>
     <artifactId>rhdm-kieserver-testsuite</artifactId>
     <version>1.0-SNAPSHOT</version>
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <source>1.7</source>
-                    <target>1.7</target>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
+
     <name>RHDM Kie Server v7 Testsuite</name>
     <packaging>jar</packaging>
     <description>RHDM Kie Server Testsuite includes tests for decision server.</description>
@@ -32,12 +28,11 @@
     </licenses>
 
     <properties>
-        <!-- KIE versions -->
-        <version.org.kie>7.5.0.Final</version.org.kie>
-
+        <!-- KIE versions TODO use redhat-x version-->
+        <version.org.kie>7.4.1.Final</version.org.kie>
         <version.io.fabric8>3.0.8</version.io.fabric8>
         <version.org.jboss.arquillian>1.2.0.Final</version.org.jboss.arquillian>
-        <version.org.arquillian.cube>1.11.1-SNAPSHOT</version.org.arquillian.cube>
+        <version.org.arquillian.cube>1.12.1-SNAPSHOT</version.org.arquillian.cube>
         <version.junit>4.12</version.junit>
     </properties>
 
@@ -81,16 +76,22 @@
             <artifactId>kie-server-client</artifactId>
         </dependency>
 
-
         <!-- tests -->
         <dependency>
             <groupId>org.arquillian.cube</groupId>
-            <artifactId>arquillian-cube-openshift</artifactId>
+            <artifactId>arquillian-cube-spi</artifactId>
+            <scope>test</scope>
         </dependency>
-
+        <dependency>
+            <groupId>org.arquillian.cube</groupId>
+            <artifactId>arquillian-cube-openshift</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.arquillian.cube</groupId>
             <artifactId>arquillian-cube-openshift-shrinkwrap</artifactId>
+            <version>1.11.0</version>
+            <scope>test</scope>
         </dependency>
 
         <dependency>
@@ -98,12 +99,35 @@
             <artifactId>arquillian-junit-container</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.wildfly.arquillian</groupId>
+            <artifactId>wildfly-arquillian-container-remote</artifactId>
+            <version>2.1.0.Final</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.arquillian.protocol</groupId>
+            <artifactId>arquillian-protocol-servlet</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--<dependency>-->
+        <!--<groupId>org.jboss.arquillian.protocol</groupId>-->
+        <!--<artifactId>arquillian-protocol-jmx</artifactId>-->
+        <!--<scope>test</scope>-->
+        <!--</dependency>-->
 
         <!--<dependency>-->
         <!--<groupId>org.jboss.as</groupId>-->
         <!--<artifactId>jboss-as-arquillian-container-remote</artifactId>-->
         <!--<scope>test</scope>-->
         <!--</dependency>-->
+
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+            <version>1.7.22</version>
+        </dependency>
 
         <dependency>
             <groupId>io.fabric8</groupId>
@@ -118,7 +142,44 @@
             <scope>test</scope>
         </dependency>
 
-
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>2.19.1</version>
+                <configuration>
+                    <runOrder>alphabetical</runOrder>
+                    <redirectTestOutputToFile>true</redirectTestOutputToFile>
+                    <trimStackTrace>false</trimStackTrace>
+                    <forkMode>once</forkMode>
+                    <includes>
+                        <include>org/jboss/**/*Test.java</include>
+                    </includes>
+                    <systemPropertyVariables>
+                        <!-- Custom DNS resolver for OpenShift routes -->
+                        <sun.net.spi.nameservice.provider.1>dns,ArquillianCubeNameService</sun.net.spi.nameservice.provider.1>
+                        <sun.net.spi.nameservice.provider.2>default</sun.net.spi.nameservice.provider.2>
+                        <kubernetes.master>${kubernetes.master}</kubernetes.master>
+                        <kubernetes.auth.token>${kubernetes.auth.token}</kubernetes.auth.token>
+                        <arq.extension.openshift.routerHost>${router.ip}</arq.extension.openshift.routerHost>
+                        <template.repository>jboss-container-images</template.repository>
+                        <template.branch>rhdm70-dev</template.branch>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${version.compiler.plugin}</version>
+                <configuration>
+                    <source>1.8</source>
+                    <target>1.8</target>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>
