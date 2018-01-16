@@ -161,7 +161,7 @@ parameters:
 - displayName: Git Reference
   description: Git branch/tag reference
   name: SOURCE_REPOSITORY_REF
-  value: rhdm70-dev
+  value: demo
   required: false
 - displayName: Context Directory
   description: Path within Git project to build; empty for root project directory.
