@@ -31,7 +31,7 @@
 
     <modules>
         <module>hellorules</module>
-        <module>hellorules-client</module>
+        <module>hellorules-container2</module>
     </modules>
 
 </project>
